@@ -1,0 +1,827 @@
+---
+title: "Coyote R Script 2024-10-29"
+author: "Larissa D. Bron"
+date: "2024-10-29"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    theme: journal
+    toc: true
+    toc_float: true
+---
+
+> .rmd script below was created based on [Marissa Dyck's ACME Camera Script] (https://github.com/ACMElabUvic/OSM_2022-2023/blob/main/scripts/1_ACME_camera_script_2024-05-06.Rmd)
+
+> IMPORTANT the first two chunks of this r markdown file **after** the r setup allow for plot zooming, but it also means that the html file must be opened in a browser to view the document properly. When it knits in RStudio the preview will appear empty but the html when opened in a browser will have all the info and you can click on each plot to Zoom in on it. 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+```
+
+These chunks (only visible in RStudio) allow for plot zooming once knitted and opened in browser, can delete if you don't want in your R markdown doc
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+Before you begin
+
+## Notes
+
+A few notes about this script.
+
+***FILL IN to be relevant to our project and data used, copied from Marissa, some notes relevant below for our data sources*** If you are running this with the 2022-2023 data make sure you download the whole (OSM_2022-2023 GitHub repository)[https://github.com/ACMElabUvic/OSM_2022-2023] from the ACMElabUvic GitHub. This will ensure you have all the files, data, and proper folder structure you will need to run this code and associated analyses.
+
+***FILL IN, also copied from Marissa*** Also make sure you open RStudio through the R project (OSM_2022-2023.Rproj) this will automatically set your working directory to the correct place (wherever you saved the repository) and ensure you don't have to change the file paths for some of the data. 
+
+If you have question please email the most recent author, currently   
+
+**Fill in**
+Jamie Clark   
+MSc Candidate    
+University of Victoria    
+School of Environmental Studies     
+Email: **FILL IN**
+
+## R and RStudio
+
+**Update**
+Before starting you should ensure you have the latest version of R and RStudio downloaded. This code was generated under R version 4.2.3 and with RStudio version 2024.04.2+764.    
+
+You can download R and RStudio [HERE](https://posit.co/download/rstudio-desktop/)   
+
+## R markdown
+
+This script is written in R markdown and thus uses a mix of coding markup languages and R. If you are planning to run this script with new data or make any modifications you will want to be familiar with some basics of R markdown.
+
+Below is an R markdown cheatsheet to help you get started,    
+[R markdown cheatsheet](https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf)    
+
+## Install packages
+
+If you don't already have the following packages installed, use the code below to install them. *NOTE this will not run automatically as eval=FALSE is included in the chunk setup (i.e. I don't want it to run every time I run this code since I have the packages installed)
+
+```{r install packages, eval=FALSE}
+
+install.packages('tidyverse') 
+install.packages('withr') 
+install.packages('PerformanceAnalytics')
+install.packages('lme4')
+install.packages('MuMIn)
+```
+
+## Load libraries
+
+Then load the packages to your library.
+
+```{r libraries}
+
+library('tidyverse') # data tidying, visualization, and much more; this will load all tidyverse packages, can see complete list using tidyverse_packages()
+library('withr') # used to temporarily set wd
+library('PerformanceAnalytics') # for correlation matrix
+library('lme4') # for adding random effect to a glm 
+library('MuMIn') # model selection
+```
+
+## Import Data
+
+Data prepared by [Marissa A. Dyck](marissadyck17@gmail.com) in 2024. 
+
+**FILL IN** The camera trapping data used in this analysis is from the work of the ACME lab at UVic. The data spans six landscape units (LUs) of space in the Alberta Oil Sands over two seasons of mammal camera trapping. Data from 2021-2022 seasons covers LUs 2 and 3, whereas the 2022-2023 season covers LUs 1, 13, 15, and 21.
+
+For this project, modelling coyote use of the landscape in the Alberta Oil Sands is considered using covariates of human footprint and vegetation (human_veg), and other mammals (proportional_detect, total_detect), which are loaded below. 
+
+The raw HFI (human footprint) and VEG (landcover) covariates were extracted using GIS by Marissa Dyck in 2024 for the six LUs and grouped. The data is defined and described in <https://github.com/ACMElabUvic/OSM_2022-2023/blob/main/data_deposit/OSM_ABMI_covariates_grouping_table.docx>. The grouping of variables is further described by the ACME lab in <https://github.com/ACMElabUvic/OSM_2022-2023/blob/main/data_deposit/OSM_ABMI_covariates_grouping_table.docx>. 
+
+First, we will load the percent cover of human and vegetation features that are captured The file name says "2021_2022" yet it covers 2021-2022 for LUs 2 and 3, 2022-2023 for LUs 1, 13, 15, and 21. 
+
+```{r import landcover features}
+human_veg <- read_csv("data/OSM_covariates_grouped_2021_2022.csv") 
+```
+
+Load proportional detections of mammals present and absent out of total number of months camera operated (max 15 months). Select only coyote.*The file name says "2021_2022" yet it covers 2021-2022 for LUs 2 and 3, 2022-2023 for LUs 1, 13, 15, and 21. 
+
+```{r import proportional camera detections}
+proportional_detect <- read_csv("data/OSM_proportional_detections_merged_2021_2022.csv") %>% 
+  dplyr:::select(site, coyote, absent_coyote)
+```
+
+Load total detections of mammals at each camera. This requires column name formatting and joining of the two years of camera trapping data.
+```{r import total camera detections}
+# 2021-2022 season
+total_detect_2021 <- read_csv("data/OSM_total_detections_2021.csv") %>% 
+  setNames(
+    names(.) %>% 
+      tolower() %>% 
+      gsub(" ", "_", .) %>% 
+      gsub("-", "_", .)) %>% 
+  rename(coyote_tot = coyote)
+
+# 2022-2023 season
+total_detect_2022 <- read_csv("data/OSM_2022_total_detections.csv") %>% 
+  setNames(
+    names(.) %>% 
+      tolower() %>% 
+      gsub(" ", "_", .) %>% 
+      gsub("-", "_", .)) %>% 
+  rename(coyote_tot = coyote)
+
+# Join 2021-2022 and 2022-2023 seasons
+common_columns <- intersect(names(total_detect_2021), names(total_detect_2022)) # find common columns between two total_detect
+
+total_detect_2021 <- total_detect_2021[, common_columns, drop = FALSE] # filter by only common columns
+total_detect_2022 <- total_detect_2022[, common_columns, drop = FALSE] # filter by only common columns
+
+remove(common_columns) # remove working dataframe
+
+total_detect <- rbind(total_detect_2021, total_detect_2022) # join together 2021-2022 and 2022-2023 observations
+
+remove(total_detect_2021) # remove working dataframe
+remove(total_detect_2022) # remove working dataframe
+```
+
+## Select and Define Features of Interest
+
+The goal of this section is to select covariates relevant to the study from the three imported datasets for review while also cleaning up the datasets. 
+
+Features are removed from human_veg below if they are not relevant to the study, ie. not a linear feature or a defined vegetation landcover category (harvest, veg_edges, wells, lc_developed, osm_industrial). 
+```{r select landcover features of interest}
+human_veg <- human_veg %>% 
+  dplyr:::select(array, site, buff_dist, pipeline, roads, seismic_lines, seismic_lines_3D, trails, transmission_lines, lc_grassland, lc_coniferous, lc_broadleaf, lc_mixed, lc_shrub)
+```
+
+Features are removed from total_detections that aren't relevant to coyote as prey, competitor, or predator based on our literature review. Mammals removed are: black_bear, staff, unknown_deer, raven, unknown, domestic_dog, other, red_fox, unknown_mustelid, striped_skunk, marten, ruffed_grouse, unknown_canid, spruce_grouse, unknown_ungulate, other_birds, owl, beaver, human, grey_jay, atver, snowmobiler). 
+```{r select mammals of interest}
+
+# select the relevant mammals
+total_detect <- total_detect %>% 
+  dplyr:::select(site, coyote_tot, fisher, snowshoe_hare, white_tailed_deer, cougar, lynx, red_squirrel, moose, grey_wolf, caribou)
+```
+
+Join together human_veg, total_detect, and proportional_detect into one working dataframe called project_data. 
+```{r create project_data}
+project_data <- human_veg %>% 
+  # filter for buffer distance of 4750m around each camera (recommended by Marissa Dyck)
+  filter(buff_dist == 4750) %>% 
+  # join total detection data
+  right_join(total_detect,
+             by = 'site') %>% 
+    right_join(proportional_detect,
+             by = 'site') %>% 
+  # rename coyote presence and absence so not confusing
+  rename(coyote_pres = coyote,
+         coyote_abs = absent_coyote) %>% 
+  # separate landscape unit and camera
+  separate(site, into = c("landscape_unit", "camera"), sep = "_") %>% 
+  # combine all LC's into one 
+  mutate(land_natural = lc_broadleaf + lc_coniferous + lc_mixed + lc_shrub + lc_grassland) %>% 
+  # combine wide linear features for interaction term models
+  mutate(wide_linear = roads + seismic_lines + transmission_lines) 
+
+# Remove useless columns from project_data
+project_data$array <- NULL
+project_data$buff_dist <- NULL
+project_data$lc_broadleaf <- NULL 
+project_data$lc_coniferous <- NULL
+project_data$lc_grassland <- NULL
+project_data$lc_mixed <- NULL
+project_data$lc_shrub <- NULL
+
+# Remove old working dataframes from the initial data imports
+rm(human_veg, proportional_detect, total_detect)
+```
+
+Confirm that all features that have so far been considered relevant to this study also have enough presence on the landscape, indicating usefulness for modelling. 
+
+```{r histograms}
+hist(project_data$pipeline)
+hist(project_data$roads)
+hist(project_data$seismic_lines)
+hist(project_data$seismic_lines_3D)
+hist(project_data$trails)
+hist(project_data$transmission_lines)
+hist(project_data$land_natural)
+hist(project_data$coyote_tot)
+hist(project_data$fisher)
+hist(project_data$snowshoe_hare)
+hist(project_data$white_tailed_deer)
+hist(project_data$cougar)
+hist(project_data$lynx)
+hist(project_data$red_squirrel)
+hist(project_data$moose)
+hist(project_data$grey_wolf)
+hist(project_data$caribou)
+hist(project_data$coyote_abs)
+hist(project_data$coyote_pres)
+hist(project_data$wide_linear)
+
+# Review: Caribou and cougar are super zero-inflated, so remove from covariates
+project_data$caribou <- NULL
+project_data$cougar <- NULL
+
+```
+
+## Check for Correlation Between Covariates
+
+The r^2 cut off of 0.7 is being considered for variables to be used together. 
+```{r covariate correlation matrix}
+
+####If you want to view the correlation chart in-line in RStudio, then remove the pdf() and dev.off commands from this code chunk. 
+
+pdf(file = "figures/corr_chart.pdf")
+
+chart.Correlation(project_data[c("pipeline", "roads", "seismic_lines", "seismic_lines_3D", "trails", "transmission_lines", "fisher", "snowshoe_hare", "white_tailed_deer", "lynx", "red_squirrel", "moose", "grey_wolf", "land_natural", "wide_linear")],
+                  histogram = TRUE, 
+                  method = "spearman",
+                  text.scale = 8)
+
+dev.off()
+
+# Correlation matrix review of covariates that can't be modelled together
+
+# pipeline-: roads (0.70), seismic_lines_3D (0.69), transmission_lines (0.70), wide_linear (0.76)
+# roads-: wide_linear(0.84)
+# transmission_lines-: wide_linear (0.79)
+
+```
+
+## Description of our Stepwise Modelling Approach
+
+**Fill in description of what we are doing**
+Model sets 
+1. Linear features.
+2. Hypotheses about coyotes and linear features, +/- with other mammals and natural landcover. 
+3. Adding in interaction terms between significant prey and competitors. 
+
+```{r linear feature models}
+
+# H0: Null model
+null_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 1 +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(null_model)
+
+# H1: Global model (all uncorrelated linear features). 
+global_linear_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(seismic_lines_3D) +
+    scale(trails) +
+    scale(transmission_lines) + 
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(global_linear_model)
+
+# H2: Pipelines (on their own because they are spatially hard to classify since pipelines can be variable widths). 
+pipeline_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(pipeline) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(pipeline_model)
+
+# H3: Narrow Linear Features (cut-off ~5m width)
+narrow_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(seismic_lines_3D) +
+    scale(trails) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(narrow_model)
+
+# H4: Wide Linear Features (anything wider than 5m width)
+wide_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(wide_model)
+
+# H5: Vegetated Linear Features (not paved or gravelled)
+linear_vegetated_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(seismic_lines) +
+    scale(seismic_lines_3D) +
+    scale(trails) +
+    scale(transmission_lines) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(linear_vegetated_model)
+
+# H6: Unvegetated Linear Features (paved or gravelled)
+linear_unvegetated_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(roads) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(linear_unvegetated_model)
+
+```
+
+Linear Feature Model Selection
+```{r linear feat model selection}
+
+linear_model_selection <- model.sel(null_model, global_linear_model, pipeline_model, narrow_model, wide_model, linear_vegetated_model, linear_unvegetated_model) 
+
+linear_model_selection
+
+# Review: Model selection showed that the top model, wide_model, had a delta higher than 2.04 of the global_linear_model (all linear feats). Wide features now  progress to the next stage of modelling. 
+
+```
+
+```{r mammal models}
+
+# H7: Global mammal model (wide linear feats., all mammals, natural landcover)
+global_mammal_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(global_mammal_model)
+# Review global_mammal_model: sig. roads***, seismic_lines***, snowshoe_hare***, grey_wolf**, lynx**, land_natural*** 
+
+# H8: Landcover 
+lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(lc_model)
+# Review lc_model: sig. lc***
+
+# H9: Wide features and natural landcover 
+wide_lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) + 
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(wide_lc_model)
+# Review wide_lc_model: sig. road***, seismic_line***, lc***
+
+# H10: Prey model 
+prey_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_model)
+
+# H11: Prey and landcover model 
+prey_lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_lc_model)
+# Review: Sig. snowshoe_hare***, red_squirrel**, lc***
+
+# H12: Competitor model 
+competitor_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_model)
+# Review: Sig. grey_wolf*, lynx***
+
+# H13: Competitor and landscape model 
+competitor_lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_lc_model)
+# Review: Sig. grey_wolf*, lynx***, land_natural***
+
+# H14: Competitor and wide linear features
+competitor_wide_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_wide_model)
+# Review: grey_wolf**, lynx***, roads***, seismic_lines*
+
+# H15: Prey and wide linear features
+prey_wide_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_wide_model)
+# Review: white_tailed_deer***, snowshoe_hare***, roads***, seismic_lines**
+
+# H16: Competitor and wide linear features and natural landcover
+competitor_wide_lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_wide_lc_model)
+# Review: grey_wolf**, roads***, seismic***, land_natural***
+
+# H17: Prey and wide linear features and natural landcover
+prey_wide_lc_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    scale(land_natural) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_wide_lc_model)
+# Review: snowshoe_hare***, roads***, seismic_lines***, land_natural***
+
+# H18: Global model with wide linear feature and top prey (snowshoe_hare) and top competitor interaction (lynx). ****Super uncertain about structure****
+global_interact_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(grey_wolf) +
+    scale(fisher) +
+    scale(land_natural) +
+    scale(wide_linear) * scale(snowshoe_hare) +
+    scale(wide_linear) * scale(lynx) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(global_interact_model)
+# Review: grey_wolf***, land_natural***, wide_linear***, snowshoe_hare***, lynx**
+
+
+# H19: Linear features and prey interaction model
+prey_interact_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(wide_linear) * scale(white_tailed_deer) +
+    scale(wide_linear) * scale(snowshoe_hare) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_interact_model)
+# Review: wide_linear***, white_tailed_deer***, snowshoe_hare***
+
+#H20: Linear features and competitor interaction model
+competitor_interact_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(wide_linear) * scale(lynx) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_interact_model)
+# Review: wide_linear***, lynx***
+
+```
+
+Mammal model testing 
+```{r mammal model selection}
+
+mammal_model_selection <- model.sel(null_model, global_mammal_model, lc_model, wide_lc_model, prey_model, prey_lc_model, competitor_model, competitor_lc_model, competitor_wide_model, prey_wide_model, competitor_wide_lc_model, prey_wide_lc_model, global_interact_model, prey_interact_model, competitor_interact_model)
+
+mammal_model_selection
+
+```
+
+
+```{r visualization odds ratio}
+
+# Odds ratio (code excerpt from final submitted). Still need to check if this is necessary based on Marissa and Jakes comments. 
+
+# Just checking H3 right now as it was the top model 
+exp(coefficients(H3))
+
+H3_odds <- 
+  tidy(H3,
+       exponentiate = TRUE,
+       confint.int = TRUE) %>% 
+  
+  # bind the estiamtes with the confidence intervals from the model
+  cbind(exp(confint(H3))) %>% 
+  
+  # change format to a tibble so works nicely with ggplot
+  as_tibble() %>% 
+  
+  rename(lower = '2.5 %',
+         upper = '97.5 %') %>% 
+  
+  filter(term != '(Intercept)')
+
+# specify data and mapping asesthetics
+ggplot(data = H3_odds,
+       aes(x = term,
+           y = estimate)) +
+  
+  # add points for the odss
+  geom_point() +
+  
+  # add errorbars for the confidence intervals
+  geom_errorbar(aes(ymin = lower,
+                    ymax = upper),
+                linewidth = 0.5,
+                width = 0.4) +
+  
+  geom_hline(yintercept = 1,
+             alpha = 0.5) +
+  
+  # rename y axis title
+  ylab('Odds ratio') +
+  scale_x_discrete(labels = c('Deer total detections',
+                              'Proportion of gravel roads',
+                              'Hare total detections',
+                              'Proportion of infrastructure lines',
+                              'Moose total detections')) +
+  
+  # flip x and y axis 
+  coord_flip() +
+  
+  # specify theme
+  
+  theme_bw() + 
+  
+  # specify theme elements
+  theme(axis.title.y = element_blank(),  
+axis.text.x = element_text(size = 15),
+axis.text.y = element_text(size = 15),
+axis.title.x = element_text(size = 15))
+```
+
+```{r visualization predicted prob}
+
+# Need to update these based on top models.The code below was copied from submitted script during the semester. 
+
+# Predict probabilities from the model
+project_data$pred_coyote <- predict(H3, type = "response") 
+
+## infrastructure line ----
+
+inf_line_plot <- ggplot(project_data, aes(x = infrastructure_line, y = pred_coyote)) +
+  geom_point() +  # Use geom_point to plot points
+  geom_smooth(method = "glm") + 
+  labs(x = "Proportion of infrastructure lines",
+       y = "Probability of coyote presence") +
+  theme(legend.position = "NONE",
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15))
+
+inf_line_plot
+
+## gravel road ----
+
+gravel_road_plot <- ggplot(project_data, aes(x = gravel_road, y = pred_coyote)) +
+  geom_point() +  # Use geom_point to plot points
+  geom_smooth(method = "glm") +  # Add smoothed line based on the GLM
+  labs(x = "Proportion of gravel roads",
+       y = "Probability of coyote presence") +
+  theme(legend.position = "NONE",
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15))
+
+gravel_road_plot
+
+## deer ----
+
+deer_plot <- ggplot(project_data, aes(x = deer_tot_det, y = pred_coyote)) +
+  geom_point() +  # Use geom_point to plot points
+  geom_smooth(method = "glm") +  # Add smoothed line based on the GLM
+  labs(x = "Deer total detections",
+       y = "Probability of coyote presence") +
+  theme(legend.position = "NONE",
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15))
+
+deer_plot
+
+## hare ----
+
+hare_plot <- ggplot(project_data, aes(x = hare_tot_det, y = pred_coyote)) +
+  geom_point() +  # Use geom_point to plot points
+  geom_smooth(method = "glm") +  # Add smoothed line based on the GLM
+  labs(x = "Hare total detections",
+       y = "Probability of coyote presence") +
+  theme(legend.position = "NONE",
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15))
+
+hare_plot
+
+## moose ----
+
+moose_plot <- ggplot(project_data, aes(x = moose_tot_det, y = pred_coyote)) +
+  geom_point() +  # Use geom_point to plot points
+  geom_smooth(method = "glm") +  # Add smoothed line based on the GLM
+  labs(x = "Moose total detections",
+       y = "Probability of coyote presence") +
+  theme(legend.position = "NONE",
+        panel.background = element_blank(),
+        panel.border = element_rect(fill = NA),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15)) 
+moose_plot
+
+PROP_BINOM_figure <- ggarrange(inf_line_plot, gravel_road_plot, deer_plot, hare_plot, moose_plot)
+PROP_BINOM_figure
+```
+
+```{r area under curve}
+
+# Odds ratio (code excerpt from final submitted). Still need to check if this is necessary based on Marissa and Jakes comments. 
+
+# area under curve
+# Create ROC curve data
+roc_data <- roc(project_data$coy_prop_pres, predict(H3, type = 'response'))
+
+auc(roc_data)
+
+roc(project_data$coy_prop_pres, predict(H0, type = 'response'))
+# 0.5 
+
+roc(project_data$coy_prop_pres, predict(H1, type = 'response'))
+# 0.6506
+
+roc(project_data$coy_prop_pres, predict(H2, type = 'response'))
+# 0.6449
+
+roc(project_data$coy_prop_pres, predict(H3, type = 'response'))
+# 0.5881 
+
+roc(project_data$coy_prop_pres, predict(H4, type = 'response'))
+# 0.6525
+
+roc(project_data$coy_prop_pres, predict(H5, type = 'response'))
+# 0.6165
+
+roc(project_data$coy_prop_pres, predict(H6, type = 'response'))
+# 0.5568
+
+H7roc <- roc(project_data$coy_prop_pres, predict(H7, type = 'response'))
+# 0.7093 
+
+roc(project_data$coy_prop_pres, predict(H8, type = 'response'))
+# 0.6278
+
+
+plot.roc(roc_data, main="Receiver Operator Characteristic Curve for top model (H3)", legacy.axes = TRUE)
+
+## do it in ggplot
+
+# Convert to data frame for ggplot2
+roc_df <- data.frame(
+  Sensitivity = roc_data$sensitivities,
+  Specificity = roc_data$specificities
+)
+
+roc_df_h7 <- data.frame(
+  Sensitivity = H7roc$sensitivities,
+  Specificity = H7roc$specificities
+)
+
+# Plot ROC curve using ggplot2
+ROCplot_h3 <- ggplot(roc_df, aes(x = 1 - Specificity, y = Sensitivity)) +
+  geom_line() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(x = "False Positive Rate (1-Specificity)", y = "True Positive Rate (Sensitivity)") + 
+  theme_classic() + 
+  theme(axis.text.x = element_text(size = 10),
+         axis.text.y = element_text(size = 10),
+         axis.title.x = element_text(size = 15),
+         axis.title.y = element_text(size = 15))
+  
+ROCplot_h3
+
+ROCplot_h7 <- ggplot(roc_df_h7, aes(x = 1 - Specificity, y = Sensitivity)) +
+  geom_line() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(x = "False Positive Rate (1-Specificity)", y = "True Positive Rate (Sensitivity)") + 
+  theme_classic() + 
+  theme(axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15))
+
+ROCplot_h7

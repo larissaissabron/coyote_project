@@ -579,17 +579,53 @@ competitor_interact_model <- glmer(
 summary(competitor_interact_model)
 # Review: wide_linear***, lynx***
 
+# H21: Prey and wide linear features with interactions
+prey_wide_interact_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(white_tailed_deer) +
+    scale(moose) +
+    scale(red_squirrel) +
+    scale(snowshoe_hare) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    scale(wide_linear) * scale(white_tailed_deer) +
+    scale(wide_linear) * scale(snowshoe_hare) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(prey_wide_interact_model)
+# Review: roads***, seismic_lines***, white_tailed_deer***, snowshoe_hare***
+
+# H22: Competitors and wide linear features with interactions
+competitor_wide_interact_model <- glmer(
+  cbind(coyote_pres, coyote_abs) ~ 
+    scale(grey_wolf) +
+    scale(lynx) +
+    scale(fisher) +
+    scale(roads) +
+    scale(seismic_lines) +
+    scale(transmission_lines) +
+    scale(wide_linear) * scale(lynx) +
+    (1 | landscape_unit),
+  data = project_data,
+  family = binomial)
+
+summary(competitor_wide_interact_model)
+# Review: grey_wolf**, lynx***, roads***, seismic_lines** 
+
+
 ```
 
 Mammal model testing 
 ```{r mammal model selection}
 
-mammal_model_selection <- model.sel(null_model, global_mammal_model, lc_model, wide_lc_model, prey_model, prey_lc_model, competitor_model, competitor_lc_model, competitor_wide_model, prey_wide_model, competitor_wide_lc_model, prey_wide_lc_model, global_interact_model, prey_interact_model, competitor_interact_model)
+mammal_model_selection <- model.sel(null_model, global_mammal_model, lc_model, wide_lc_model, prey_model, prey_lc_model, competitor_model, competitor_lc_model, competitor_wide_model, prey_wide_model, competitor_wide_lc_model, prey_wide_lc_model, global_interact_model, prey_interact_model, competitor_interact_model, prey_wide_interact_model, competitor_wide_interact_model)
 
 mammal_model_selection
 
 ```
-
 
 ```{r visualization odds ratio}
 
